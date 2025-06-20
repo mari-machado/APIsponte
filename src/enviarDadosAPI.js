@@ -1,11 +1,11 @@
 const axios = require("axios");
 const { parseString } = require("xml2js");
+const fs = require('fs');
 
 require("dotenv").config();
 
 const API_URL = "https://api.sponteeducacional.net.br/WSAPIEdu.asmx";
 
-// Função auxiliar para obter o ID do aluno
 async function getAlunoID(nomeAluno) {
   try {
     const alunoResponse = await axios.get(`${API_URL}/GetAlunos`, {
@@ -28,14 +28,20 @@ async function getAlunoID(nomeAluno) {
   }
 }
 
-// Função auxiliar para obter o ID do plano
-async function getPlanoID(alunoID, dataVencimento) {
+async function getPlanoID(alunoID, dataVencimento, categoriaID) {
   try {
+    let sParametrosBusca;
+    if ([609, 610, 611].includes(Number(categoriaID))) {
+      sParametrosBusca = `AlunoID=${alunoID};DataVencimento=${dataVencimento};Situacao=0;CategoriaID=${categoriaID}`;
+    } else {
+      sParametrosBusca = `AlunoID=${alunoID};DataVencimento=${dataVencimento};Situacao=0;TipoPlanoContrato=0;CategoriaID=${categoriaID}`;
+    }
+
     const parcelaResponse = await axios.get(`${API_URL}/GetParcelas`, {
       params: {
         nCodigoCliente: process.env.CODIGO_CLIENTE,
         sToken: process.env.TOKEN,
-        sParametrosBusca: `AlunoID=${alunoID};DataVencimento=${dataVencimento};Situacao=0;TipoPlanoContrato=0`, //Vai pegar a parcela que é de mensalidade, está pendendente, e tem a respectiva data de vencimento
+        sParametrosBusca,
       },
     });
 
@@ -71,7 +77,6 @@ async function getPlanoID(alunoID, dataVencimento) {
   }
 }
 
-// Função auxiliar para converter o XML em objetos
 async function parseXML(xmlData) {
   return new Promise((resolve, reject) => {
     parseString(xmlData, (err, result) => {
@@ -85,7 +90,6 @@ async function parseXML(xmlData) {
   });
 }
 
-// Função principal refatorada
 async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
   console.log(dados);
   const resultados = [];
@@ -119,7 +123,6 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
 
     try {
       if (nomeAluno === "Nome do Aluno") {
-        // Ignorar o cabeçalho do array
         continue;
       }
 
@@ -127,12 +130,42 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
 
       if (!alunoID) {
         alunoID = await getAlunoID(nomeAluno);
-        alunosCache[nomeAluno] = alunoID; // Armazenar no cache
+        alunosCache[nomeAluno] = alunoID; 
       }
-      const [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
-        alunoID,
-        dataVencimentoOriginal
-      );
+
+      const isDependencia =
+        String(descricaoCobranca).toUpperCase().includes('DEPENDÊNCIA') ||
+        String(produtoIsaac).toUpperCase().includes('DEPENDÊNCIA');
+
+      let planoID, numeroParcela, situacaoParcela;
+      if (isDependencia) {
+        let categoriaIDs = [609, 610, 611];
+        let encontrou = false;
+        for (const categoriaID of categoriaIDs) {
+          [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
+            alunoID,
+            dataVencimentoOriginal,
+            categoriaID
+          );
+          if (planoID !== "Erro" && planoID !== 0) {
+            encontrou = true;
+            break;
+          }
+        }
+        if (!encontrou) {
+          [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
+            alunoID,
+            dataVencimentoOriginal,
+            ""
+          );
+        }
+      } else {
+        [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
+          alunoID,
+          dataVencimentoOriginal,
+          ""
+        );
+      }
 
       if (situacaoParcela === "A parcela já estava quitada!") {
         logHtml = situacaoParcela;
@@ -145,7 +178,6 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
         continue;
       }
 
-      //Atualização da parcela no plano
       const soapRequestBody = `
       <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
         <soap:Body>
@@ -193,7 +225,6 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
         PlanoID: planoID,
       });
     } catch (error) {
-      // Tratamento de erros
       console.error("Erro no processamento:", error);
     }
     alunosprocessados++;
@@ -207,7 +238,6 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
   return resultados;
 }
 
-// Função para obter o ID da categoria pelo nome
 function getIdByCategoryName(categoryName) {
   const data = {
     "1ª PARC. ANUIDADE": 190,
@@ -288,7 +318,6 @@ function getIdByCategoryName(categoryName) {
     "Taxa administrativa": 706,
   };
 
-  // Convertendo o nome da categoria e os valores do objeto para letras minúsculas para tornar a pesquisa case-insensitive
   const lowerCaseCategoryName = categoryName.toLowerCase();
   for (const [name, id] of Object.entries(data)) {
     if (name.toLowerCase().includes(lowerCaseCategoryName)) {
@@ -299,4 +328,19 @@ function getIdByCategoryName(categoryName) {
   return "Categoria não encontrada";
 }
 
-module.exports = { enviarParaAPI };
+async function enviarDependenciasAPI(caminhoArquivo, mudarProgresso = () => {}) {
+  const dadosBrutos = JSON.parse(fs.readFileSync(caminhoArquivo, 'utf8'));
+  const cabecalho = dadosBrutos[0];
+  const dados = dadosBrutos.slice(1);
+
+  const dependencias = dados.filter(linha => {
+    return (
+      String(linha[2]).toUpperCase().includes('DEPENDÊNCIA') ||
+      String(linha[1]).toUpperCase().includes('DEPENDÊNCIA')
+    );
+  });
+
+  return await enviarParaAPI([cabecalho, ...dependencias], mudarProgresso);
+}
+
+module.exports = { enviarParaAPI, enviarDependenciasAPI };

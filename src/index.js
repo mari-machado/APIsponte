@@ -88,11 +88,42 @@ async function tratarDados(dados, posicoesParaLer) {
           ) {
             linha[posicao] = "Manoel Junior Alves Leite";
           }
+          if (
+            linha[posicao]
+              .toString()
+              .toLowerCase()
+              .includes("Heitor Queiroz da Siva".toLowerCase())
+          ) {
+            linha[posicao] = "Heitor Queiroz da Silva";
+          }
+          if (
+            linha[posicao]
+              .toString()
+              .toLowerCase()
+              .includes("Micael Feijó Marque da Silva".toLowerCase())
+          ) {
+            linha[posicao] = "Micael Feijó Marques Silva";
+          }
+          if (
+            linha[posicao]
+              .toString()
+              .toLowerCase()
+              .includes("Bernardo Lorenço  de Almeida Oliveira".toLowerCase())
+          ) {
+            linha[posicao] = "Bernardo Lorenço de Almeida Oliveira";
+          }
+          if (
+            linha[posicao]
+              .toString()
+              .toLowerCase()
+              .includes("Ana Júlia da Santana Rangel".toLowerCase())
+          ) {
+            linha[posicao] = "Ana Júlia de Santana Rangel";
+          }
         }
 
         if (posicao === 5) {
           if (
-            linha[posicao].toString().toLowerCase().includes("depend") ||
             linha[posicao].toString().toLowerCase().includes("inativo")
           ) {
             adicionarLinha = false;
@@ -143,7 +174,7 @@ async function tratarDados(dados, posicoesParaLer) {
 
         if (posicao === 12) {
           const mes = Number(linha[posicao].toString().substring(0, 2));
-          if (mes < (process.env.MES_ATUAL || new Date().getMonth())) {
+          if (mes !== Number(process.env.MES_ATUAL || new Date().getMonth() + 1)) {
             adicionarLinha = false;
           }
         }
