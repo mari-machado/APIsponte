@@ -59,18 +59,43 @@ async function getPlanoID(alunoID, dataVencimento, categoriaID) {
       return [PlanoID, NumeroParcela, SituacaoParcela];
     }
 
-    const PlanoID =
-      result?.ArrayOfWsParcela?.wsParcela?.[0]?.ContaReceberID?.[0] ?? "Erro";
-    const SituacaoParcela =
-      result?.ArrayOfWsParcela?.wsParcela?.[0]?.SituacaoParcela?.[0] ?? "Erro";
-    const NumeroParcela =
-      result?.ArrayOfWsParcela?.wsParcela?.[0]?.NumeroParcela?.[0] ?? "Erro";
+    const parcelas = result?.ArrayOfWsParcela?.wsParcela || [];
+    
+    if ([609, 610, 611].includes(Number(categoriaID))) {
+      const categoriaEsperada = categoriaID === 609 ? "DEPENDÊNCIA-01" : 
+                               categoriaID === 610 ? "DEPENDÊNCIA-02" : "DEPENDÊNCIA-03";
+      
+      for (const parcela of parcelas) {
+        const categoriaParcela = parcela?.Categoria?.[0] || "";
+        if (categoriaParcela.toUpperCase().includes(categoriaEsperada.toUpperCase())) {
+          const PlanoID = parcela?.ContaReceberID?.[0] ?? "Erro";
+          const SituacaoParcela = parcela?.SituacaoParcela?.[0] ?? "Erro";
+          const NumeroParcela = parcela?.NumeroParcela?.[0] ?? "Erro";
+          
+          console.log(`Id do Plano: ${PlanoID}`);
+          console.log(`Numero da Parcela: ${NumeroParcela}`);
+          console.log(`Situacao do Plano: ${SituacaoParcela}`);
+          console.log(`Categoria encontrada: ${categoriaParcela}`);
+          
+          return [PlanoID, NumeroParcela, SituacaoParcela];
+        }
+      }
+      
+      return ["Erro", "Erro", "Categoria não encontrada"];
+    } else {
+      const PlanoID =
+        result?.ArrayOfWsParcela?.wsParcela?.[0]?.ContaReceberID?.[0] ?? "Erro";
+      const SituacaoParcela =
+        result?.ArrayOfWsParcela?.wsParcela?.[0]?.SituacaoParcela?.[0] ?? "Erro";
+      const NumeroParcela =
+        result?.ArrayOfWsParcela?.wsParcela?.[0]?.NumeroParcela?.[0] ?? "Erro";
 
-    console.log(`Id do Plano: ${PlanoID}`);
-    console.log(`Numero da Parcela: ${NumeroParcela}`);
-    console.log(`Situacao do Plano: ${SituacaoParcela}`);
+      console.log(`Id do Plano: ${PlanoID}`);
+      console.log(`Numero da Parcela: ${NumeroParcela}`);
+      console.log(`Situacao do Plano: ${SituacaoParcela}`);
 
-    return [PlanoID, NumeroParcela, SituacaoParcela];
+      return [PlanoID, NumeroParcela, SituacaoParcela];
+    }
   } catch (error) {
     console.error("Erro na chamada SOAP (getPlanoID):", error);
     throw error;
@@ -133,31 +158,33 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
         alunosCache[nomeAluno] = alunoID; 
       }
 
-      const isDependencia =
-        String(descricaoCobranca).toUpperCase().includes('DEPENDÊNCIA') ||
-        String(produtoIsaac).toUpperCase().includes('DEPENDÊNCIA');
+      const isDependencia = String(descricaoCobranca).toUpperCase().includes('DEPENDÊNCIA') ||
+                            String(produtoIsaac).toUpperCase().includes('DEPENDÊNCIA');
 
       let planoID, numeroParcela, situacaoParcela;
+      
       if (isDependencia) {
         let categoriaIDs = [609, 610, 611];
         let encontrou = false;
+        
         for (const categoriaID of categoriaIDs) {
           [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
             alunoID,
             dataVencimentoOriginal,
             categoriaID
           );
+          
           if (planoID !== "Erro" && planoID !== 0) {
             encontrou = true;
             break;
           }
         }
+        
         if (!encontrou) {
-          [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
-            alunoID,
-            dataVencimentoOriginal,
-            ""
-          );
+          logHtml = `Dependência não encontrada para ${nomeAluno}`;
+          alunosprocessados++;
+          mudarProgresso(alunosprocessados, quantidadeDeAlunos, logHtml);
+          continue;
         }
       } else {
         [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
