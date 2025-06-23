@@ -76,9 +76,9 @@ async function tratarDados(dados, posicoesParaLer) {
             linha[posicao]
               .toString()
               .toLowerCase()
-              .includes("Joseph Arthur Fernandes da Silva".toLowerCase())
+              .includes("Joseph Arthur Azevedo  Silva".toLowerCase())
           ) {
-            linha[posicao] = "Joseph Arthur Azevedo da Silva";
+            linha[posicao] = "Joseph Arthur Azevedo Silva";
           }
           if (
             linha[posicao]

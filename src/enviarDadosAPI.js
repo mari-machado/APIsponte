@@ -23,7 +23,6 @@ async function getAlunoID(nomeAluno) {
     }
     return AlunoID;
   } catch (error) {
-    console.error("Erro na chamada SOAP (getAlunoID):", error);
     throw error;
   }
 }
@@ -80,8 +79,7 @@ async function getPlanoID(alunoID, dataVencimento, categoriaID) {
           return [PlanoID, NumeroParcela, SituacaoParcela];
         }
       }
-      
-      return ["Erro", "Erro", "Categoria não encontrada"];
+      throw new Error(`Parcela de dependência não encontrada para o alunoID ${alunoID} e categoria ${categoriaEsperada}`);
     } else {
       const PlanoID =
         result?.ArrayOfWsParcela?.wsParcela?.[0]?.ContaReceberID?.[0] ?? "Erro";
@@ -94,10 +92,13 @@ async function getPlanoID(alunoID, dataVencimento, categoriaID) {
       console.log(`Numero da Parcela: ${NumeroParcela}`);
       console.log(`Situacao do Plano: ${SituacaoParcela}`);
 
+      if (PlanoID === "Erro" || NumeroParcela === "Erro") {
+        throw new Error(`Parcela não encontrada para o alunoID ${alunoID}`);
+      }
+
       return [PlanoID, NumeroParcela, SituacaoParcela];
     }
   } catch (error) {
-    console.error("Erro na chamada SOAP (getPlanoID):", error);
     throw error;
   }
 }
@@ -166,25 +167,26 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
       if (isDependencia) {
         let categoriaIDs = [609, 610, 611];
         let encontrou = false;
+        let erroDependencia = null;
         
         for (const categoriaID of categoriaIDs) {
-          [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
-            alunoID,
-            dataVencimentoOriginal,
-            categoriaID
-          );
-          
-          if (planoID !== "Erro" && planoID !== 0) {
-            encontrou = true;
-            break;
+          try {
+            [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
+              alunoID,
+              dataVencimentoOriginal,
+              categoriaID
+            );
+            if (planoID !== "Erro" && planoID !== 0) {
+              encontrou = true;
+              break;
+            }
+          } catch (erro) {
+            erroDependencia = erro;
           }
         }
         
         if (!encontrou) {
-          logHtml = `Dependência não encontrada para ${nomeAluno}`;
-          alunosprocessados++;
-          mudarProgresso(alunosprocessados, quantidadeDeAlunos, logHtml);
-          continue;
+          throw new Error(erroDependencia ? erroDependencia.message : `Dependência não encontrada para ${nomeAluno}`);
         }
       } else {
         [planoID, numeroParcela, situacaoParcela] = await getPlanoID(
@@ -252,7 +254,8 @@ async function enviarParaAPI(dados = [], mudarProgresso = () => {}) {
         PlanoID: planoID,
       });
     } catch (error) {
-      console.error("Erro no processamento:", error);
+      console.error("Erro no processamento:", error.message || error);
+      logHtml = error.message || "Erro desconhecido";
     }
     alunosprocessados++;
     await mudarProgresso(alunosprocessados, quantidadeDeAlunos, logHtml);
